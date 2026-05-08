@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSPI $100K Pipeline</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F7F6F2; --surface: #FFFFFF; --border: #E2DFD8; --border-strong: #C8C4BC;
+  --text: #1A1916; --text-2: #5C5A54; --text-3: #9B9890;
+  --accent: #1A3A2A; --amber: #7A4F1A; --amber-light: #FDF0DC;
+  --red: #7A1A1A; --red-light: #FDE8E8; --blue: #1A2E7A; --blue-light: #E8ECFD;
+  --purple: #3A1A7A; --purple-light: #EDE8FD; --green: #1A5C2A; --green-light: #E8F5EC;
+  --radius: 10px; --radius-sm: 6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+
+/* LOGIN */
+#login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #0F1F17; }
+.login-box { text-align: center; padding: 40px; }
+.login-box h1 { font-size: 22px; font-weight: 600; color: #C8A84B; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+.login-box p { font-size: 13px; color: #7A8C80; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 28px; }
+.login-box input { font-family: 'DM Sans', sans-serif; font-size: 15px; padding: 12px 20px; border-radius: 6px; border: 1px solid #2A4A38; background: #162A20; color: white; width: 280px; text-align: center; outline: none; margin-bottom: 14px; display: block; margin-left: auto; margin-right: auto; }
+.login-box input::placeholder { color: #4A6A58; }
+.login-box button { font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 11px 36px; border-radius: 6px; border: none; background: #C8A84B; color: #0F1F17; cursor: pointer; width: 280px; display: block; margin-left: auto; margin-right: auto; }
+.login-box button:hover { background: #D4B85A; }
+.login-error { font-size: 12px; color: #E07070; margin-top: 10px; min-height: 18px; }
+
+/* APP */
+#app-screen { display: none; }
+header { background: var(--accent); color: white; padding: 16px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+header h1 { font-size: 17px; font-weight: 500; }
+.pills { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; align-items: center; }
+.pill { font-size: 12px; padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,.25); color: rgba(255,255,255,.8); }
+.pill b { color: white; font-weight: 600; }
+.pill.warn { border-color: #EF9F27; color: #FAC775; }
+.pill.warn b { color: #FAC775; }
+
+/* GOAL BAR */
+.goal-bar-wrap { background: #132B1E; padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.goal-label { font-size: 13px; color: rgba(255,255,255,.6); white-space: nowrap; }
+.goal-track { flex: 1; min-width: 160px; background: rgba(255,255,255,.12); border-radius: 20px; height: 10px; overflow: hidden; }
+.goal-fill { height: 100%; background: #C8A84B; border-radius: 20px; transition: width .4s; }
+.goal-amount { font-size: 13px; color: white; font-weight: 500; white-space: nowrap; }
+.goal-edit-btn { font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,.25); background: transparent; color: rgba(255,255,255,.7); cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.goal-edit-btn:hover { background: rgba(255,255,255,.1); }
+
+/* PIN MODAL */
+.pin-modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 200; align-items: center; justify-content: center; }
+.pin-modal-bg.open { display: flex; }
+.pin-modal { background: var(--surface); border-radius: var(--radius); padding: 24px; width: 300px; text-align: center; }
+.pin-modal h3 { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+.pin-modal p { font-size: 13px; color: var(--text-2); margin-bottom: 16px; }
+.pin-modal input { font-family: 'DM Sans', sans-serif; font-size: 18px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); width: 100%; text-align: center; letter-spacing: .2em; outline: none; margin-bottom: 12px; }
+.pin-modal input:focus { border-color: var(--accent); }
+.pin-actions { display: flex; gap: 8px; justify-content: center; }
+.pin-error { font-size: 12px; color: var(--red); margin-top: 6px; min-height: 16px; }
+
+/* REVENUE MODAL */
+.rev-modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 200; align-items: center; justify-content: center; }
+.rev-modal-bg.open { display: flex; }
+.rev-modal { background: var(--surface); border-radius: var(--radius); padding: 24px; width: 340px; }
+.rev-modal h3 { font-size: 15px; font-weight: 500; margin-bottom: 14px; }
+.rev-field label { font-size: 12px; color: var(--text-2); display: block; margin-bottom: 3px; font-weight: 500; }
+.rev-field input { font-family: 'DM Sans', sans-serif; font-size: 14px; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; margin-bottom: 10px; }
+.rev-field input:focus { border-color: var(--accent); }
+.rev-note { font-size: 12px; color: var(--text-3); margin-bottom: 14px; font-style: italic; }
+
+.toolbar { padding: 12px 24px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--border); background: var(--surface); }
+.toolbar input, .toolbar select { font-family: 'DM Sans', sans-serif; font-size: 13px; padding: 7px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); outline: none; }
+.toolbar input:focus, .toolbar select:focus { border-color: var(--accent); }
+.toolbar input { width: 190px; }
+.btn { font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; padding: 7px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background .12s; white-space: nowrap; }
+.btn:hover { background: var(--bg); }
+.btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn-primary:hover { background: #254d38; }
+.btn-danger { color: var(--red); border-color: #F0C0C0; }
+.btn-danger:hover { background: var(--red-light); }
+.ml-auto { margin-left: auto; }
+
+main { padding: 16px 24px; }
+.col-head { display: grid; gap: 10px; padding: 6px 14px;
+  grid-template-columns: minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.1fr) minmax(0,.9fr) minmax(0,1fr) 90px 22px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0;
+  border-bottom: 1px solid var(--border); margin-bottom: -1px; position: relative; z-index: 1; }
+.col-head-cell { font-size: 11px; font-weight: 600; color: var(--text-3); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px; }
+.col-head-cell:hover { color: var(--text-2); }
+.sort-arrow { font-size: 10px; opacity: 0; }
+.col-head-cell.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+.col-head-cell.sorted { color: var(--accent); }
+
+.list { display: flex; flex-direction: column; }
+.row { background: var(--surface); border: 1px solid var(--border); border-top: none; overflow: hidden; }
+.row:last-child { border-radius: 0 0 var(--radius) var(--radius); }
+.row.stalled { border-left: 3px solid #EF9F27; }
+.row-head { display: grid; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none;
+  grid-template-columns: minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.1fr) minmax(0,.9fr) minmax(0,1fr) 90px 22px; }
+.row-head:hover { background: #FAFAF8; }
+.co-name { font-size: 14px; font-weight: 500; }
+.co-contact { font-size: 12px; color: var(--text-2); margin-top: 1px; }
+.adopter-name { font-size: 13px; }
+.adopter-assist { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+.adopter-none { font-size: 13px; color: var(--text-3); font-style: italic; }
+.badge { display: inline-block; font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 20px; white-space: nowrap; }
+.b-available { background: #F1EFE8; color: #5C5A54; }
+.b-adopted { background: var(--blue-light); color: var(--blue); }
+.b-introduced { background: var(--amber-light); color: var(--amber); }
+.b-active { background: var(--purple-light); color: var(--purple); }
+.b-converted { background: var(--green-light); color: var(--green); }
+.b-declined { background: var(--red-light); color: var(--red); }
+.meta-cell { font-size: 12px; color: var(--text-3); line-height: 1.4; }
+.stall-flag { font-size: 11px; color: var(--amber); font-weight: 500; }
+.conv-type { font-size: 11px; color: var(--text-3); }
+.chevron { font-size: 13px; color: var(--text-3); transition: transform .2s; text-align: right; }
+.chevron.open { transform: rotate(180deg); }
+.detail { display: none; padding: 14px 16px; border-top: 1px solid var(--border); background: #FAFAF8; }
+.detail.open { display: block; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; margin-bottom: 12px; }
+.form-grid .full { grid-column: 1 / -1; }
+.field label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 3px; font-weight: 500; }
+.field input, .field select, .field textarea { font-family: 'DM Sans', sans-serif; font-size: 13px; width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); outline: none; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+.field textarea { min-height: 64px; resize: vertical; line-height: 1.5; }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; }
+.add-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-top: 12px; display: none; }
+.add-panel h3 { font-size: 15px; font-weight: 500; margin-bottom: 12px; }
+.empty { text-align: center; padding: 48px 0; color: var(--text-3); font-size: 14px; background: var(--surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius) var(--radius); }
+.loading { text-align: center; padding: 48px 0; color: var(--text-3); }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>SSPI Board Pipeline</h1>
+    <p>New members, partners and sponsors &middot; Enter password to continue</p>
+    <input id="pw-input" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')checkPw()">
+    <button onclick="checkPw()">Unlock</button>
+    <div class="login-error" id="pw-error"></div>
+  </div>
+</div>
+
+<!-- PIN MODAL -->
+<div class="pin-modal-bg" id="pin-modal">
+  <div class="pin-modal">
+    <h3>Admin access required</h3>
+    <p>Enter your PIN to update the revenue figure.</p>
+    <input id="pin-input" type="password" maxlength="4" placeholder="&bull;&bull;&bull;&bull;" onkeydown="if(event.key==='Enter')checkPin()">
+    <div class="pin-error" id="pin-error"></div>
+    <div class="pin-actions">
+      <button class="btn" onclick="closePinModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="checkPin()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- REVENUE MODAL -->
+<div class="rev-modal-bg" id="rev-modal">
+  <div class="rev-modal">
+    <h3>Update confirmed new revenue</h3>
+    <p class="rev-note">Only count money that is genuinely new to SSPI. Upgrades and renewals from existing relationships require your judgment before crediting here.</p>
+    <div class="rev-field"><label>Confirmed new revenue toward $100K goal</label><input id="rev-input" type="number" min="0" max="100000" placeholder="0"></div>
+    <div class="rev-field"><label>Note (optional)</label><input id="rev-note-input" type="text" placeholder="What closed, what counts..."></div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeRevModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRevenue()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-screen">
+  <header>
+    <h1>SSPI Board Pipeline</h1>
+    <div class="pills" id="header-pills"><div class="pill"><b>0</b> companies</div></div>
+  </header>
+
+  <div class="goal-bar-wrap">
+    <span class="goal-label">Goal: $100,000</span>
+    <div class="goal-track"><div class="goal-fill" id="goal-fill" style="width:0%"></div></div>
+    <span class="goal-amount" id="goal-amount">$0 confirmed</span>
+    <button class="goal-edit-btn" onclick="openPinModal()">Update revenue</button>
+    <span id="goal-note" style="font-size:11px;color:rgba(255,255,255,.45);max-width:200px;"></span>
+  </div>
+
+  <div class="toolbar">
+    <input id="fsearch" type="text" placeholder="Search company, contact, adopter&hellip;" oninput="render()">
+    <select id="fstage" onchange="render()">
+      <option value="">All stages</option>
+      <option value="available">Available</option>
+      <option value="adopted">Adopted</option>
+      <option value="introduced">Intro sent to Tamara</option>
+      <option value="active">Active conversation</option>
+      <option value="converted">Converted</option>
+      <option value="declined">Declined</option>
+    </select>
+    <select id="fadopter" onchange="render()"><option value="">All adopters</option></select>
+    <button class="btn btn-primary ml-auto" onclick="toggleAdd()">+ Add company</button>
+  </div>
+
+  <main>
+    <div id="loading" class="loading">Loading pipeline&hellip;</div>
+    <div id="app" style="display:none">
+      <div class="col-head">
+        <div class="col-head-cell" onclick="setSort('company')">Company <span class="sort-arrow" id="arr-company"></span></div>
+        <div class="col-head-cell" onclick="setSort('adopter')">Adopter <span class="sort-arrow" id="arr-adopter"></span></div>
+        <div class="col-head-cell" onclick="setSort('stage')">Stage <span class="sort-arrow" id="arr-stage"></span></div>
+        <div class="col-head-cell" onclick="setSort('introDate')">Intro date <span class="sort-arrow" id="arr-introDate"></span></div>
+        <div class="col-head-cell" onclick="setSort('updatedAt')">Last update <span class="sort-arrow" id="arr-updatedAt"></span></div>
+        <div class="col-head-cell" onclick="setSort('convType')">Conversion <span class="sort-arrow" id="arr-convType"></span></div>
+        <div></div>
+      </div>
+      <div class="list" id="list"></div>
+
+      <div class="add-panel" id="add-panel">
+        <h3>Add company to pipeline</h3>
+        <div class="form-grid">
+          <div class="field"><label>Company name *</label><input id="n-company" type="text" placeholder="Acme Satellite"></div>
+          <div class="field"><label>Contact name and title</label><input id="n-contact" type="text" placeholder="Jane Smith, VP Marketing"></div>
+          <div class="field"><label>Adopted by</label><input id="n-adopter" type="text" placeholder="Leave blank if unassigned"></div>
+          <div class="field"><label>Assist (second person)</label><input id="n-assist" type="text" placeholder="Name of person who can help"></div>
+          <div class="field"><label>Stage</label>
+            <select id="n-stage">
+              <option value="available">Available</option>
+              <option value="adopted">Adopted</option>
+              <option value="introduced">Intro sent to Tamara</option>
+              <option value="active">Active conversation</option>
+              <option value="converted">Converted</option>
+              <option value="declined">Declined</option>
+            </select>
+          </div>
+          <div class="field"><label>Date intro sent to Tamara</label><input id="n-introdate" type="date"></div>
+          <div class="field"><label>Conversion type</label>
+            <select id="n-convtype">
+              <option value="">Not yet determined</option>
+              <option>Corporate membership</option>
+              <option>Individual membership</option>
+              <option>Event sponsorship</option>
+              <option>Mentorship partner</option>
+              <option>Campaign sponsor</option>
+            </select>
+          </div>
+          <div class="field"><label>Decline reason (if applicable)</label><input id="n-decline" type="text" placeholder="Budget, timing, wrong contact&hellip;"></div>
+          <div class="field full"><label>Conversation notes</label><textarea id="n-notes" placeholder="What has been discussed, where things stand, what the next step is&hellip;"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" onclick="toggleAdd()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveNew()">Save company</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── CREDENTIALS (change before uploading if needed) ──
+const SITE_PASSWORD = '100kChallenge';
+const ADMIN_PIN = '1863';
+const JSONBIN_MASTER_KEY = '$2a$10$CmYnNUmHCV8MfT4S.w4HiufpzXX2KkDfwdT1pbP/bQTQESX1e1V1u';
+const JSONBIN_BIN_ID = ''; // leave blank — will be created on first save
+
+// ── STATE ──
+const STALE_DAYS = 14;
+const STAGE_ORDER = {available:0,adopted:1,introduced:2,active:3,converted:4,declined:5};
+const GOAL = 100000;
+let pipeline = [];
+let meta = { confirmedRevenue: 0, revenueNote: '', binId: JSONBIN_BIN_ID };
+let openId = null;
+let sortCol = 'company';
+let sortDir = 1;
+let pinUnlocked = false;
+
+// ── LOGIN ──
+function checkPw() {
+  const val = document.getElementById('pw-input').value;
+  if (val === SITE_PASSWORD) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'block';
+    loadData();
+  } else {
+    document.getElementById('pw-error').textContent = 'Incorrect password.';
+    document.getElementById('pw-input').value = '';
+  }
+}
+document.getElementById('pw-input').addEventListener('keydown', e => { if(e.key==='Enter') checkPw(); });
+
+// ── PIN ──
+function openPinModal() {
+  document.getElementById('pin-input').value = '';
+  document.getElementById('pin-error').textContent = '';
+  document.getElementById('pin-modal').classList.add('open');
+  setTimeout(() => document.getElementById('pin-input').focus(), 100);
+}
+function closePinModal() { document.getElementById('pin-modal').classList.remove('open'); }
+function checkPin() {
+  if (document.getElementById('pin-input').value === ADMIN_PIN) {
+    closePinModal();
+    openRevModal();
+  } else {
+    document.getElementById('pin-error').textContent = 'Incorrect PIN.';
+    document.getElementById('pin-input').value = '';
+  }
+}
+
+// ── REVENUE MODAL ──
+function openRevModal() {
+  document.getElementById('rev-input').value = meta.confirmedRevenue || 0;
+  document.getElementById('rev-note-input').value = meta.revenueNote || '';
+  document.getElementById('rev-modal').classList.add('open');
+  setTimeout(() => document.getElementById('rev-input').focus(), 100);
+}
+function closeRevModal() { document.getElementById('rev-modal').classList.remove('open'); }
+function saveRevenue() {
+  meta.confirmedRevenue = parseFloat(document.getElementById('rev-input').value) || 0;
+  meta.revenueNote = document.getElementById('rev-note-input').value.trim();
+  closeRevModal();
+  saveData();
+  updateGoalBar();
+}
+
+// ── GOAL BAR ──
+function updateGoalBar() {
+  const pct = Math.min(100, (meta.confirmedRevenue / GOAL) * 100);
+  document.getElementById('goal-fill').style.width = pct + '%';
+  document.getElementById('goal-amount').textContent = '$' + meta.confirmedRevenue.toLocaleString() + ' confirmed';
+  document.getElementById('goal-note').textContent = meta.revenueNote || '';
+}
+
+// ── JSONBIN ──
+async function loadData() {
+  try {
+    // Try to get saved bin ID from localStorage as fallback pointer
+    let binId = meta.binId || localStorage.getItem('sspi_pipeline_bin');
+    if (binId) {
+      const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+        headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
+      });
+      const data = await res.json();
+      if (data.record) {
+        pipeline = data.record.pipeline || PRELOAD;
+        meta = { ...meta, ...data.record.meta };
+      }
+    } else {
+      pipeline = PRELOAD;
+      await saveData();
+    }
+  } catch(e) {
+    pipeline = PRELOAD;
+  }
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  updateGoalBar();
+  render();
+}
+
+async function saveData() {
+  try {
+    let binId = meta.binId || localStorage.getItem('sspi_pipeline_bin');
+    const payload = { pipeline, meta };
+    if (binId) {
+      await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
+        body: JSON.stringify(payload)
+      });
+    } else {
+      const res = await fetch('https://api.jsonbin.io/v3/b', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY, 'X-Bin-Name': 'sspi-pipeline-2026', 'X-Bin-Private': 'true' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.metadata?.id) {
+        meta.binId = data.metadata.id;
+        localStorage.setItem('sspi_pipeline_bin', data.metadata.id);
+      }
+    }
+  } catch(e) { console.error('Save failed', e); }
+}
+
+// ── HELPERS ──
+function daysSince(iso) {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function isStalled(item) {
+  if (['available','converted','declined'].includes(item.stage)) return false;
+  const d = daysSince(item.updatedAt || item.createdAt);
+  return d !== null && d >= STALE_DAYS;
+}
+function stageLabel(s) {
+  return {available:'Available',adopted:'Adopted',introduced:'Intro sent',active:'Active convo',converted:'Converted',declined:'Declined'}[s]||s;
+}
+
+// ── SORT ──
+function setSort(col) {
+  if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = 1; }
+  render();
+}
+function sortedFiltered() {
+  const s = document.getElementById('fsearch').value.toLowerCase();
+  const fs = document.getElementById('fstage').value;
+  const fa = document.getElementById('fadopter').value;
+  let items = pipeline.filter(item => {
+    if (s && ![item.company,item.contact,item.adopter,item.assist,item.notes].some(f=>(f||'').toLowerCase().includes(s))) return false;
+    if (fs && item.stage !== fs) return false;
+    if (fa && item.adopter !== fa) return false;
+    return true;
+  });
+  items.sort((a,b) => {
+    let av, bv;
+    if (sortCol==='stage') { av=STAGE_ORDER[a.stage]??99; bv=STAGE_ORDER[b.stage]??99; }
+    else if (sortCol==='updatedAt') { av=a.updatedAt||a.createdAt||''; bv=b.updatedAt||b.createdAt||''; }
+    else {
+      av=(a[sortCol]||'').toLowerCase(); bv=(b[sortCol]||'').toLowerCase();
+      if (sortCol==='adopter') { if(!a.adopter) av='zzzzz'; if(!b.adopter) bv='zzzzz'; }
+    }
+    return av<bv ? -sortDir : av>bv ? sortDir : 0;
+  });
+  return items;
+}
+
+// ── RENDER ──
+function updateSummary() {
+  const adopted = pipeline.filter(d=>d.stage!=='available').length;
+  const converted = pipeline.filter(d=>d.stage==='converted').length;
+  const stalled = pipeline.filter(isStalled).length;
+  const adopters = [...new Set(pipeline.map(d=>d.adopter).filter(Boolean))].sort();
+  const cur = document.getElementById('fadopter').value;
+  document.getElementById('fadopter').innerHTML = '<option value="">All adopters</option>' + adopters.map(a=>`<option${a===cur?' selected':''}>${a}</option>`).join('');
+  document.getElementById('header-pills').innerHTML =
+    `<div class="pill"><b>${pipeline.length}</b> companies</div>` +
+    `<div class="pill"><b>${adopted}</b> adopted</div>` +
+    `<div class="pill"><b>${converted}</b> converted</div>` +
+    (stalled ? `<div class="pill warn"><b>${stalled}</b> stalled</div>` : '');
+  ['company','adopter','stage','introDate','updatedAt','convType'].forEach(col => {
+    const el = document.getElementById('arr-'+col);
+    const head = el?.parentElement;
+    if (!el) return;
+    el.textContent = sortCol===col ? (sortDir===1?'▲':'▼') : '▲';
+    head.classList.toggle('sorted', sortCol===col);
+  });
+}
+
+function render() {
+  updateSummary();
+  const items = sortedFiltered();
+  const list = document.getElementById('list');
+  if (!items.length) { list.innerHTML='<div class="empty">No companies match these filters.</div>'; return; }
+  const stages=['available','adopted','introduced','active','converted','declined'];
+  const stageNames={available:'Available',adopted:'Adopted',introduced:'Intro sent to Tamara',active:'Active conversation',converted:'Converted',declined:'Declined'};
+  const convTypes=['','Corporate membership','Individual membership','Event sponsorship','Mentorship partner','Campaign sponsor'];
+  list.innerHTML = items.map(item => {
+    const stall=isStalled(item);
+    const days=daysSince(item.updatedAt||item.createdAt);
+    const isOpen=openId===item.id;
+    const stageOpts=stages.map(sv=>`<option value="${sv}"${item.stage===sv?' selected':''}>${stageNames[sv]}</option>`).join('');
+    const convOpts=convTypes.map(t=>`<option value="${t}"${item.convType===t?' selected':''}>${t||'Not yet determined'}</option>`).join('');
+    return `<div class="row${stall?' stalled':''}" id="row-${item.id}">
+      <div class="row-head" onclick="toggle('${item.id}')">
+        <div><div class="co-name">${item.company}</div>${item.contact?`<div class="co-contact">${item.contact}</div>`:''}</div>
+        <div>${item.adopter?`<div class="adopter-name">${item.adopter}</div>${item.assist?`<div class="adopter-assist">assist: ${item.assist}</div>`:''}`:`<span class="adopter-none">unassigned</span>`}</div>
+        <div><span class="badge b-${item.stage}">${stageLabel(item.stage)}</span></div>
+        <div class="meta-cell">${item.introDate?fmtDate(item.introDate):''}</div>
+        <div class="meta-cell">${stall?`<span class="stall-flag">${days}d &mdash; needs follow-up</span>`:days!==null?`${days}d ago`:''}</div>
+        <div class="conv-type">${item.convType||''}</div>
+        <div class="chevron${isOpen?' open':''}">&#8964;</div>
+      </div>
+      <div class="detail${isOpen?' open':''}" id="det-${item.id}">
+        <div class="form-grid">
+          <div class="field"><label>Company name</label><input type="text" value="${(item.company||'').replace(/"/g,'&quot;')}" onchange="upd('${item.id}','company',this.value)"></div>
+          <div class="field"><label>Contact name and title</label><input type="text" value="${(item.contact||'').replace(/"/g,'&quot;')}" onchange="upd('${item.id}','contact',this.value)"></div>
+          <div class="field"><label>Adopted by</label><input type="text" value="${(item.adopter||'').replace(/"/g,'&quot;')}" onchange="upd('${item.id}','adopter',this.value)"></div>
+          <div class="field"><label>Assist contact</label><input type="text" value="${(item.assist||'').replace(/"/g,'&quot;')}" onchange="upd('${item.id}','assist',this.value)"></div>
+          <div class="field"><label>Stage</label><select onchange="upd('${item.id}','stage',this.value)">${stageOpts}</select></div>
+          <div class="field"><label>Date intro sent to Tamara</label><input type="date" value="${item.introDate||''}" onchange="upd('${item.id}','introDate',this.value)"></div>
+          <div class="field"><label>Conversion type</label><select onchange="upd('${item.id}','convType',this.value)">${convOpts}</select></div>
+          <div class="field"><label>Decline reason</label><input type="text" value="${(item.declineReason||'').replace(/"/g,'&quot;')}" placeholder="If declined&hellip;" onchange="upd('${item.id}','declineReason',this.value)"></div>
+          <div class="field full"><label>Conversation notes</label><textarea onchange="upd('${item.id}','notes',this.value)">${item.notes||''}</textarea></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-danger" onclick="del('${item.id}')">Delete</button></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggle(id) { openId = openId===id ? null : id; render(); }
+function upd(id, field, val) {
+  const item = pipeline.find(d=>d.id===id);
+  if (!item) return;
+  item[field]=val; item.updatedAt=new Date().toISOString().slice(0,10);
+  saveData(); render();
+}
+function del(id) {
+  if (!confirm('Remove this company from the pipeline?')) return;
+  pipeline=pipeline.filter(d=>d.id!==id);
+  if(openId===id) openId=null;
+  saveData(); render();
+}
+function toggleAdd() {
+  const p=document.getElementById('add-panel');
+  const showing=p.style.display==='block';
+  p.style.display=showing?'none':'block';
+  if(!showing){
+    ['n-company','n-contact','n-adopter','n-assist','n-introdate','n-decline','n-notes'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('n-stage').value='available';
+    document.getElementById('n-convtype').value='';
+    setTimeout(()=>document.getElementById('n-company').focus(),50);
+  }
+}
+function saveNew() {
+  const company=document.getElementById('n-company').value.trim();
+  if(!company){document.getElementById('n-company').focus();return;}
+  pipeline.push({
+    id:'c'+Date.now(), company,
+    contact:document.getElementById('n-contact').value.trim(),
+    adopter:document.getElementById('n-adopter').value.trim(),
+    assist:document.getElementById('n-assist').value.trim(),
+    stage:document.getElementById('n-stage').value,
+    introDate:document.getElementById('n-introdate').value,
+    convType:document.getElementById('n-convtype').value,
+    declineReason:document.getElementById('n-decline').value.trim(),
+    notes:document.getElementById('n-notes').value.trim(),
+    createdAt:new Date().toISOString().slice(0,10),
+    updatedAt:new Date().toISOString().slice(0,10),
+  });
+  toggleAdd(); saveData(); render();
+}
+
+// ── PRELOAD DATA ──
+const PRELOAD = [{"id":"c1700000000","company":"Blue Origin","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000001","company":"HawkEye 360","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000002","company":"Lockheed Martin","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000003","company":"Rocket Lab","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000004","company":"Umbra","contact":"","adopter":"Stephen","assist":"","stage":"adopted","introDate":"","convType":"","declineReason":"","notes":"Stephen following up for marketing contact.","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000005","company":"United Launch Alliance","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000006","company":"ATCi","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000007","company":"AVCOM of Virginia Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000008","company":"Brandywine Communications","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000009","company":"CDA InterCorp LLC","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000010","company":"CPI","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000011","company":"Datum Systems Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000012","company":"Eutelsat","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000013","company":"Firefly Aerospace","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000014","company":"Geosync Microwave Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000015","company":"Global Skyware","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000016","company":"Hertz Systems LLC","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000017","company":"Hispasat","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000018","company":"Honeybee Robotics","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000019","company":"Honeywell Aerospace Technologies","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000020","company":"Innoflight","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000021","company":"KenCast Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000022","company":"Kratos","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000023","company":"L3Harris","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000024","company":"Mavenir","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000025","company":"Moog Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000026","company":"Narda-MITEQ","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000027","company":"Northrop Grumman","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000028","company":"Orbital Research Ltd.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000029","company":"Radome Services","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000030","company":"Research Concepts Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000031","company":"Sat-Lite Technologies","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000032","company":"Scientific Microwave Corporation","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000033","company":"TRAK TECOM","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000034","company":"Teledyne","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000035","company":"Telesat","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000036","company":"Terrasat Communications Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000037","company":"ThinKom Solutions Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000038","company":"Tomorrow.io","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000039","company":"A1 Microwave","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000040","company":"AppLogic Networks","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000041","company":"Apposite Technologies","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000042","company":"Arianespace Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000043","company":"Aukua Systems Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000044","company":"Crane Aerospace & Electronics","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000045","company":"MTN Satellite","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000046","company":"NearSpace Launch","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000047","company":"NovaWurks Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000048","company":"Presidio Components","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000049","company":"JSAT International Inc.","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000050","company":"RBC Signals","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000051","company":"Terran Orbital Corporation","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000052","company":"BAE Systems","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000053","company":"CONFERS","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000054","company":"Calian","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000055","company":"CesiumAstro","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000056","company":"Safran","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000057","company":"Redwire","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000058","company":"Airbus","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000059","company":"Cobham Satcom","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000060","company":"Lanteris Space Systems","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000061","company":"AlixPartners","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000062","company":"SWISSto12","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000063","company":"Intellian Technologies","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000064","company":"Kepler Communications","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000065","company":"Rivada Space Networks","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"},{"id":"c1700000066","company":"NewOrbit Space","contact":"","adopter":"","assist":"","stage":"available","introDate":"","convType":"","declineReason":"","notes":"","createdAt":"2026-05-07","updatedAt":"2026-05-07"}];
+</script>
+</body>
+</html>
