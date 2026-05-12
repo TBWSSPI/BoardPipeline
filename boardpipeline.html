@@ -422,7 +422,12 @@ function sortedFiltered() {
       av=(a[sortCol]||'').toLowerCase(); bv=(b[sortCol]||'').toLowerCase();
       if (sortCol==='adopter') { if(!a.adopter) av='zzzzz'; if(!b.adopter) bv='zzzzz'; }
     }
-    return av<bv ? -sortDir : av>bv ? sortDir : 0;
+    if (av < bv) return -sortDir;
+    if (av > bv) return sortDir;
+    // tiebreaker: always alphabetical by company
+    const ac = a.company.toLowerCase();
+    const bc = b.company.toLowerCase();
+    return ac < bc ? -1 : ac > bc ? 1 : 0;
   });
   return items;
 }
