@@ -256,18 +256,17 @@ main { padding: 16px 24px; }
 </div>
 
 <script>
-// ── CREDENTIALS (change before uploading if needed) ──
+// ── CREDENTIALS ──
 const SITE_PASSWORD = '100kChallenge';
 const ADMIN_PIN = '1863';
-const JSONBIN_MASTER_KEY = '$2a$10$CmYnNUmHCV8MfT4S.w4HiufpzXX2KkDfwdT1pbP/bQTQESX1e1V1u';
-const JSONBIN_BIN_ID = ''; // leave blank — will be created on first save
+const FIREBASE_URL = 'https://boardpipeline-default-rtdb.firebaseio.com';
 
 // ── STATE ──
 const STALE_DAYS = 14;
 const STAGE_ORDER = {available:0,adopted:1,introduced:2,active:3,converted:4,declined:5};
 const GOAL = 100000;
 let pipeline = [];
-let meta = { confirmedRevenue: 0, revenueNote: '', binId: JSONBIN_BIN_ID };
+let meta = { confirmedRevenue: 0, revenueNote: '' };
 let openId = null;
 let sortCol = 'company';
 let sortDir = 1;
@@ -329,20 +328,14 @@ function updateGoalBar() {
   document.getElementById('goal-note').textContent = meta.revenueNote || '';
 }
 
-// ── JSONBIN ──
+// ── FIREBASE ──
 async function loadData() {
   try {
-    // Try to get saved bin ID from localStorage as fallback pointer
-    let binId = meta.binId || localStorage.getItem('sspi_pipeline_bin');
-    if (binId) {
-      const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
-        headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
-      });
-      const data = await res.json();
-      if (data.record) {
-        pipeline = data.record.pipeline || PRELOAD;
-        meta = { ...meta, ...data.record.meta };
-      }
+    const res = await fetch(`${FIREBASE_URL}/pipeline.json`);
+    const data = await res.json();
+    if (data) {
+      pipeline = data.pipeline || PRELOAD;
+      meta = { confirmedRevenue: 0, revenueNote: '', ...data.meta };
     } else {
       pipeline = PRELOAD;
       await saveData();
@@ -358,26 +351,11 @@ async function loadData() {
 
 async function saveData() {
   try {
-    let binId = meta.binId || localStorage.getItem('sspi_pipeline_bin');
-    const payload = { pipeline, meta };
-    if (binId) {
-      await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-        body: JSON.stringify(payload)
-      });
-    } else {
-      const res = await fetch('https://api.jsonbin.io/v3/b', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY, 'X-Bin-Name': 'sspi-pipeline-2026', 'X-Bin-Private': 'true' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.metadata?.id) {
-        meta.binId = data.metadata.id;
-        localStorage.setItem('sspi_pipeline_bin', data.metadata.id);
-      }
-    }
+    await fetch(`${FIREBASE_URL}/pipeline.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pipeline, meta })
+    });
   } catch(e) { console.error('Save failed', e); }
 }
 
