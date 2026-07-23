@@ -71,7 +71,7 @@ header h1 { font-size: 20px; font-weight: 500; }
 .toolbar { padding: 12px 24px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--border); background: var(--surface); }
 .toolbar input, .toolbar select { font-family: 'DM Sans', sans-serif; font-size: 15px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); outline: none; }
 .toolbar input:focus, .toolbar select:focus { border-color: var(--accent); }
-.toolbar input { width: 220px; }
+.toolbar input { width: 290px; min-width: 0; }
 .btn { font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background .12s; white-space: nowrap; }
 .btn:hover { background: var(--bg); }
 .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
@@ -191,13 +191,16 @@ main { padding: 16px 24px; }
     <select id="fstage" onchange="render()">
       <option value="">All stages</option>
       <option value="available">Available</option>
-      <option value="adopted">Adopted</option>
+      <option value="adopted">Outreach pending</option>
       <option value="introduced">Intro sent to Tamara</option>
       <option value="active">Active conversation</option>
       <option value="converted">Converted</option>
       <option value="declined">Declined</option>
     </select>
-    <select id="fadopter" onchange="render()"><option value="">All adopters</option></select>
+    <select id="fadopter" onchange="render()">
+      <option value="">All adopters</option>
+      <option value="__any_adopter__">Any adopter / Adopted</option>
+    </select>
     <button class="btn btn-primary ml-auto" onclick="toggleAdd()">+ Add company</button>
   </div>
 
@@ -225,7 +228,7 @@ main { padding: 16px 24px; }
           <div class="field"><label>Stage</label>
             <select id="n-stage">
               <option value="available">Available</option>
-              <option value="adopted">Adopted</option>
+              <option value="adopted">Outreach pending</option>
               <option value="introduced">Intro sent to Tamara</option>
               <option value="active">Active conversation</option>
               <option value="converted">Converted</option>
@@ -262,7 +265,7 @@ const ADMIN_PIN = '1863';
 const FIREBASE_URL = 'https://boardpipeline-default-rtdb.firebaseio.com';
 
 // ── STATE ──
-const STALE_DAYS = 14;
+const STALE_DAYS = 15;
 const STAGE_ORDER = {available:0,adopted:1,introduced:2,active:3,converted:4,declined:5};
 const GOAL = 100000;
 let pipeline = [];
@@ -368,13 +371,16 @@ function fmtDate(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+function isAdopted(item) {
+  return Boolean((item.adopter || '').trim());
+}
 function isStalled(item) {
-  if (['available','converted','declined'].includes(item.stage)) return false;
+  if (!isAdopted(item) || ['converted','declined'].includes(item.stage)) return false;
   const d = daysSince(item.updatedAt || item.createdAt);
   return d !== null && d >= STALE_DAYS;
 }
 function stageLabel(s) {
-  return {available:'Available',adopted:'Adopted',introduced:'Intro sent',active:'Active convo',converted:'Converted',declined:'Declined'}[s]||s;
+  return {available:'Available',adopted:'Outreach pending',introduced:'Intro sent',active:'Active convo',converted:'Converted',declined:'Declined'}[s]||s;
 }
 
 // ── SORT ──
@@ -389,7 +395,8 @@ function sortedFiltered() {
   let items = pipeline.filter(item => {
     if (s && ![item.company,item.contact,item.adopter,item.assist,item.notes].some(f=>(f||'').toLowerCase().includes(s))) return false;
     if (fs && item.stage !== fs) return false;
-    if (fa && item.adopter !== fa) return false;
+    if (fa === '__any_adopter__' && !isAdopted(item)) return false;
+    if (fa && fa !== '__any_adopter__' && (item.adopter || '').trim() !== fa) return false;
     return true;
   });
   items.sort((a,b) => {
@@ -412,12 +419,15 @@ function sortedFiltered() {
 
 // ── RENDER ──
 function updateSummary() {
-  const adopted = pipeline.filter(d=>d.stage!=='available').length;
+  const adopted = pipeline.filter(isAdopted).length;
   const converted = pipeline.filter(d=>d.stage==='converted').length;
   const stalled = pipeline.filter(isStalled).length;
-  const adopters = [...new Set(pipeline.map(d=>d.adopter).filter(Boolean))].sort();
+  const adopters = [...new Set(pipeline.filter(isAdopted).map(d=>d.adopter.trim()))].sort();
   const cur = document.getElementById('fadopter').value;
-  document.getElementById('fadopter').innerHTML = '<option value="">All adopters</option>' + adopters.map(a=>`<option${a===cur?' selected':''}>${a}</option>`).join('');
+  document.getElementById('fadopter').innerHTML =
+    '<option value="">All adopters</option>' +
+    `<option value="__any_adopter__"${cur==='__any_adopter__'?' selected':''}>Any adopter / Adopted</option>` +
+    adopters.map(a=>`<option${a===cur?' selected':''}>${a}</option>`).join('');
   document.getElementById('header-pills').innerHTML =
     `<div class="pill"><b>${pipeline.length}</b> companies</div>` +
     `<div class="pill"><b>${adopted}</b> adopted</div>` +
@@ -438,7 +448,7 @@ function render() {
   const list = document.getElementById('list');
   if (!items.length) { list.innerHTML='<div class="empty">No companies match these filters.</div>'; return; }
   const stages=['available','adopted','introduced','active','converted','declined'];
-  const stageNames={available:'Available',adopted:'Adopted',introduced:'Intro sent to Tamara',active:'Active conversation',converted:'Converted',declined:'Declined'};
+  const stageNames={available:'Available',adopted:'Outreach pending',introduced:'Intro sent to Tamara',active:'Active conversation',converted:'Converted',declined:'Declined'};
   const convTypes=['','Corporate membership','Individual membership','Event sponsorship','Mentorship partner','Campaign sponsor'];
   list.innerHTML = items.map(item => {
     const stall=isStalled(item);
