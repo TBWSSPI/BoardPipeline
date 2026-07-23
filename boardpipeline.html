@@ -198,8 +198,8 @@ main { padding: 16px 24px; }
       <option value="declined">Declined</option>
     </select>
     <select id="fadopter" onchange="render()">
-      <option value="">All adopters</option>
-      <option value="__any_adopter__">Any adopter / Adopted</option>
+      <option value="">All Companies</option>
+      <option value="__any_adopter__">All Adopted</option>
     </select>
     <button class="btn btn-primary ml-auto" onclick="toggleAdd()">+ Add company</button>
   </div>
@@ -425,8 +425,8 @@ function updateSummary() {
   const adopters = [...new Set(pipeline.filter(isAdopted).map(d=>d.adopter.trim()))].sort();
   const cur = document.getElementById('fadopter').value;
   document.getElementById('fadopter').innerHTML =
-    '<option value="">All adopters</option>' +
-    `<option value="__any_adopter__"${cur==='__any_adopter__'?' selected':''}>Any adopter / Adopted</option>` +
+    '<option value="">All Companies</option>' +
+    `<option value="__any_adopter__"${cur==='__any_adopter__'?' selected':''}>All Adopted</option>` +
     adopters.map(a=>`<option${a===cur?' selected':''}>${a}</option>`).join('');
   document.getElementById('header-pills').innerHTML =
     `<div class="pill"><b>${pipeline.length}</b> companies</div>` +
